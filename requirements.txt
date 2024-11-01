@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+loguru
+pydantic
+pyyaml
