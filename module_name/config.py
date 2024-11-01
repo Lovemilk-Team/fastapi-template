@@ -1,8 +1,8 @@
 from pathlib import Path
 from fastapi.openapi.models import License as AppLicense, Contact as AppContact
 from typing import Callable, Any, TypeVar, Iterable
-from pydantic import BaseModel
-from functools import cached_property
+from pydantic import BaseModel, Field
+from functools import cache, cached_property
 from datetime import time, timedelta
 import yaml
 
@@ -16,6 +16,9 @@ except ImportError:
 APP_VERSION = '0.1.0'
 RECOMMENDED_CONFIG_PATH = './config.yml'
 
+@cache
+def _get_module_name(current_file: str | Path) -> str:
+    return Path(current_file).absolute().resolve().parent.name
 
 class AppConfig(BaseModel):
     """
@@ -27,6 +30,7 @@ class AppConfig(BaseModel):
     reload: bool = False
     proxy_headers: bool = True
 
+    module_name: str = Field(default_factory=lambda: _get_module_name(__file__))
     title: str = 'Lovemilk FastAPI Template'
     summary: str | None = None
     description: str | None = None
