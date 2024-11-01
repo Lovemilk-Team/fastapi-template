@@ -3,6 +3,7 @@ from fastapi.openapi.models import License as AppLicense, Contact as AppContact
 from typing import Callable, Any, TypeVar, Iterable
 from pydantic import BaseModel
 from functools import cached_property
+from datetime import time, timedelta
 import yaml
 
 try:
@@ -44,9 +45,12 @@ class AppConfig(BaseModel):
 
 class LogConfig(BaseModel):
     stderr_level: int | str = 'DEBUG'
-    stderr_format: str | ... = ...
+    stderr_format: str | None = None
+
     file_level: int | str = 'INFO'
-    file_format: str | ... = ...
+    file_format: str | None = None
+    file_rotation: str | int | time | timedelta = '00:00'
+    file_retention: str | int | timedelta = '30 days'
 
 
 class Config(BaseModel):

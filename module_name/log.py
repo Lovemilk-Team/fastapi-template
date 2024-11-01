@@ -4,14 +4,22 @@ from loguru import logger
 from .shared import config
 
 logger.remove()
-logger.add(sys.stderr, level=config.log.stderr_level, format=config.log.stderr_format, backtrace=False)
+
+log_config_dict = config.log.model_dump()
+stderr_kwargs = {k[7:]: v for k, v in log_config_dict.items() if k.startswith('stderr_')}
+if not stderr_kwargs['format']:
+    stderr_kwargs.pop('format')
+
+logger.add(sys.stderr, backtrace=False, **stderr_kwargs)
+
+file_kwargs = {k[5:]: v for k, v in log_config_dict.items() if k.startswith('file_')}
+if not file_kwargs['format']:
+    file_kwargs.pop('format')
+
 logger.add(
     'logs/{time:YYYY-MM-DD}.log',
-    level=config.log.file_level,
-    rotation='00:00',
-    retention='30 days',
     diagnose=True,
     backtrace=True,
-    format=config.log.file_format,
     encoding='u8',
+    **file_kwargs
 )
