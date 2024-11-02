@@ -1,10 +1,13 @@
+from http import HTTPStatus
 from pathlib import Path
 from fastapi.openapi.models import License as AppLicense, Contact as AppContact
 from typing import Callable, Any, TypeVar, Iterable
-from pydantic import BaseModel, Field
-from functools import cache, cached_property
+from pydantic import BaseModel, model_validator, Field
+from functools import cached_property
 from datetime import time, timedelta
 import yaml
+
+from structs.rate_limiter import MatchFields, MatchMethod
 
 try:
     # 优先使用 LibYAML 速度更快
@@ -14,23 +17,24 @@ except ImportError:
     from yaml import Loader, Dumper
 
 APP_VERSION = '0.1.0'
-RECOMMENDED_CONFIG_PATH = './config.yml'
+MERGED_CONFIG_PATH = './merged.config.yml'
 
-@cache
-def _get_module_name(current_file: str | Path) -> str:
-    return Path(current_file).absolute().resolve().parent.name
+
+# NOTE: timedelta will be converted to https://en.wikipedia.org/wiki/ISO_8601 format by Pydantic.
+# like 10 seconds is `PT10S`
 
 class AppConfig(BaseModel):
     """
-    FastAPI APP 配置
+    see
     https://fastapi.tiangolo.com/zh/reference/fastapi/#fastapi.FastAPI
+    and
+    https://www.uvicorn.org/settings/
     """
     host: str = '127.0.0.1'
     port: int | str = 8000
     reload: bool = False
     proxy_headers: bool = True
 
-    module_name: str = Field(default_factory=lambda: _get_module_name(__file__))
     title: str = 'Lovemilk FastAPI Template'
     summary: str | None = None
     description: str | None = None
@@ -48,18 +52,85 @@ class AppConfig(BaseModel):
 
 
 class LogConfig(BaseModel):
-    stderr_level: int | str = 'DEBUG'
-    stderr_format: str | None = None
+    stderr_level: int | str = Field(default='DEBUG', description='the log level of stderr')
+    stderr_format: str | None = Field(
+        default=None, description='the log format of stderr (None to use default format by loguru)'
+    )
 
-    file_level: int | str = 'INFO'
-    file_format: str | None = None
-    file_rotation: str | int | time | timedelta = '00:00'
-    file_retention: str | int | timedelta = '30 days'
+    file_level: int | str = Field(default='INFO', description='the log level of log file')
+    file_format: str | None = Field(
+        default=None, description='the log format of log file (None to use default format by loguru)'
+    )
+    file_rotation: str | int | time | timedelta = Field(default='00:00', description='the log rotation of log file')
+    file_retention: str | int | timedelta = Field(default='30 days', description='the log retention of log file')
+
+
+class RateLimitConfig(BaseModel):
+    enable: bool = Field(default=False, description='enable rate limit or not')
+    window_time: timedelta | None = Field(
+        default=None,
+        description='the window time of rate limit (request will be counted which\'s '
+                    'timestamp is less than window time)'
+    )
+    limit: int | None = Field(default=None, description='the max requests of each window time of rate limit')
+    match_fields: MatchFields | list[MatchFields] | None = Field(
+        default=None, description='which field(s) to check if is the same client of rate limit'
+    )
+    match_method: MatchMethod | None = Field(
+        default=None,
+        description='use `and` or `or` to check if is the same client of rate limit for each field'
+    )
+
+    status_code: int = Field(
+        default=HTTPStatus.TOO_MANY_REQUESTS.value,
+        description='the status code if rate limit exceeded'
+    )
+    message: str | list | dict | None = Field(
+        default=None,
+        description='the message if rate limit exceeded'
+    )
+
+    @model_validator(mode='after')
+    def verify_time_window(self):
+        if not self.enable:
+            return self
+
+        assert self.window_time is not None, 'window_time must be defined when enable is True'
+        assert self.limit is not None, 'limit must be defined when enable is True'
+        assert self.match_fields is not None, 'match_fields must be defined when enable is True'
+        if not isinstance(self.match_fields, list):
+            self.match_fields = [self.match_fields]
+        assert self.match_method is not None, 'match_method must be defined when enable is True'
+
+        if self.message is None:
+            self.message = HTTPStatus(self.status_code).phrase
+
+        return self
+
+
+class ServiceConfig(BaseModel):
+    rate_limit: RateLimitConfig = RateLimitConfig()
+
+
+class CORSConfig(BaseModel):
+    """
+    see
+    https://fastapi.tiangolo.com/tutorial/cors/
+    """
+    allow_origins: list[str] = ['*']
+    allow_methods: list[str] = ['*']
+    allow_headers: list[str] = ['*']
+    allow_credentials: bool = False
+    allow_origin_regex: str | None = None
+    expose_headers: list[str] = ['*']
+    max_age: int = 600
 
 
 class Config(BaseModel):
     app: AppConfig = AppConfig()
     log: LogConfig = LogConfig()
+    service: ServiceConfig = ServiceConfig()
+    cors: CORSConfig = CORSConfig()
 
 
 def _load_yaml(path: str | Path) -> dict[str, Any]:
@@ -97,7 +168,7 @@ def _map_files(
     return result
 
 
-def create_config(config: Config, *, path: str | Path = RECOMMENDED_CONFIG_PATH):
+def create_config(config: Config, *, path: str | Path = MERGED_CONFIG_PATH):
     """
     配置文件不存在时生成一个完整的默认配置
     """
