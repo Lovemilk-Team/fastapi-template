@@ -7,7 +7,7 @@ from functools import cached_property
 from datetime import time, timedelta
 import yaml
 
-from structs.rate_limiter import MatchFields, MatchMethod
+from .structs.rate_limiter import MatchFields, MatchMethod
 
 try:
     # 优先使用 LibYAML 速度更快
@@ -181,7 +181,8 @@ def create_config(config: Config, *, path: str | Path = MERGED_CONFIG_PATH):
             fp.write(yaml.dump(
                 config.model_dump(mode='json'),
                 default_flow_style=False,
-                Dumper=Dumper
+                allow_unicode=True,
+                Dumper=Dumper,
             ))
     except (FileExistsError, PermissionError):
         pass

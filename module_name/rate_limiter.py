@@ -26,17 +26,17 @@ _status_code: int = config.service.rate_limit.status_code
 _message: str | None = config.service.rate_limit.message
 
 
-def _map_seq(seq_1: Sequence[Any] | dict, seq_2: Sequence[Any] | dict):
-    return (item not in seq_2 or item == seq_2[key]
+def _map_seq(seq_1: Sequence[Any] | dict, seq_2: Sequence[Any] | dict, *, ignore_empty: bool):
+    return ((ignore_empty and (not item or item not in seq_2)) or item == seq_2[key]
             for key, item in (seq_1.items() if isinstance(seq_1, dict) else enumerate(seq_1)))
 
 
 def _and(seq_1: Sequence[Any] | dict, seq_2: Sequence[Any] | dict) -> bool:
-    return all(_map_seq(seq_1, seq_2))
+    return all(_map_seq(seq_1, seq_2, ignore_empty=False))
 
 
 def _or(seq_1: Sequence[Any] | dict, seq_2: Sequence[Any] | dict) -> bool:
-    return any(_map_seq(seq_1, seq_2))
+    return any(_map_seq(seq_1, seq_2, ignore_empty=True))
 
 
 def add_rate_limit(app: FastAPI):
@@ -53,7 +53,7 @@ def add_rate_limit(app: FastAPI):
         for index in range(len(rate_limit_datas) - 1, -1, -1):  # 从后开始找直到第一个超出 _window_time 的请求
             request_state = rate_limit_datas[index]
             if _now - request_state.timestamp > _window_time:
-                rate_limit_datas = rate_limit_datas[index:]  # 由于是顺序 appended, 所以可以直接删除前面的
+                rate_limit_datas = rate_limit_datas[index + 1:]  # 由于是顺序 appended, 所以可以直接删除前面的
                 rate_limit_logger.debug('removed old requests by index from 0 to {}', index)
                 break
 

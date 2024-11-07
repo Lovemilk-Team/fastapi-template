@@ -1,5 +1,6 @@
-from pydantic import BaseModel
+from http import HTTPStatus
 from typing import Any, Mapping
+from pydantic import BaseModel, Field
 from fastapi.routing import JSONResponse
 
 __all__ = (
@@ -11,11 +12,11 @@ class BaseResponse(BaseModel):
     code: int
     message: str | None = None
     data: Any | None = None
-    headers: Mapping[str, Any] | None = None
+    headers: Mapping[str, Any] | None = Field(default=None, exclude=True)
 
     def model_post_init(self, __context: Any) -> None:
         if self.message is None:
-            self.message = 'success' if 200 <= self.code <= 299 else 'error'
+            self.message = HTTPStatus(self.code).phrase
 
     def to_response(self) -> JSONResponse:
         return JSONResponse(

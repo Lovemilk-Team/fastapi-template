@@ -1,10 +1,11 @@
 from asyncio import iscoroutine
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
-from fastapi.exceptions import StarletteHTTPException
+from fastapi.exceptions import HTTPException, StarletteHTTPException
 from typing import Any, Callable, TypeVar, Coroutine, Awaitable, TypeAlias
 
 from ..structs.responses import BaseResponse
+from ..structs.exceptions import ServerException
 
 __all__ = (
     'add_http_exception_handler',
@@ -30,7 +31,7 @@ def _get_handler(exc: _ExceptionType) -> list[_ExceptionHandlerType] | None:
 async def _exception_handler_middleware(request: Request, call_next):
     try:
         return await call_next(request)
-    except tuple(_exception_handlers.keys()) as exc:
+    except tuple(_exception_handlers.keys()) as exc:  # 相对引入和绝对引入的 Exception 不相等, 请注意!
         handlers = _get_handler(type(exc))
         if not handlers:
             raise
@@ -44,7 +45,6 @@ async def _exception_handler_middleware(request: Request, call_next):
                 return result.to_response()
             elif isinstance(result, Request):
                 return result
-
         raise
 
 
@@ -55,12 +55,31 @@ def _add_handler(exc: _ExceptionType, handler: _ExceptionHandlerType):
     _exception_handlers[exc].append(handler)
 
 
-def add_http_exception_handler():
-    # 由于 app.exception_handler 无法捕获位于 middleware 的 exception, 此处使用 middleware 实现
+# 由于 app.exception_handler 无法捕获位于 middleware 的 exception, 此处使用 middleware 实现
+def add_http_exception_handler(app: FastAPI):
     async def _handle_http_exception(_: Request, exc: StarletteHTTPException):
-        return BaseResponse(code=exc.status_code, message=exc.detail, headers=exc.headers)
+        return BaseResponse(code=exc.status_code, message=exc.detail, headers=exc.headers).to_response()
 
+    _add_handler(HTTPException, _handle_http_exception)  # type: ignore
     _add_handler(StarletteHTTPException, _handle_http_exception)  # type: ignore
+    app.exception_handler(StarletteHTTPException)(_handle_http_exception)  # 处理由 fastapi 内部产生的 HTTPException
+
+
+def add_server_exception_handler(app: FastAPI):
+    """
+    处理 ServerException
+    handle ServerException
+    `..structs.exceptions.ServerException`
+
+    注意: 相对引入和绝对引入的 Exception 不相等, 请使用相对导入 (以 `.` 开头) 的 ServerException
+    WARN: Please use the relative import (which starts with `.`) instead absolute import for ServerException
+    because the exception in relative import and absolute import are not `==`.
+    """
+    async def _handle_server_exception(_: Request, exc: ServerException):
+        return exc.to_response()
+
+    _add_handler(StarletteHTTPException, _handle_server_exception)  # type: ignore
+    app.exception_handler(ServerException)(_handle_server_exception)
 
 
 def add_exception_handler_middleware(app: FastAPI):
