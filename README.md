@@ -41,7 +41,7 @@
 
 6. 运行 `run.py`
     ```shell
-        python run.py
+    python run.py
     ```
     > 要修改服务器的 host, port 配置, 请参见配置项 `app.host` 和 `app.port`, 默认使用 `127.0.0.1` 和 `8000`
 
