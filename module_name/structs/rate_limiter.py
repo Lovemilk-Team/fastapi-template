@@ -4,10 +4,21 @@ from datetime import datetime
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
+__all__ = (
+    'MatchFields',
+    'MatchMethod',
+    'RequestState'
+)
+
 if sys.version_info >= (3, 11):
     from enum import StrEnum
 else:
-    from enum import Enum as StrEnum
+    from enum import Enum
+
+    # 手动创建 StrEnum 类型
+    class StrEnum(str, Enum):
+        pass
+    del Enum
 
 
 class MatchFields(StrEnum):

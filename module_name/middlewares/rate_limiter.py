@@ -3,9 +3,9 @@ from datetime import timedelta, datetime
 from typing import Callable, Any, Sequence
 from fastapi.exceptions import HTTPException
 
-from .log import logger
-from .shared import config
-from .structs.rate_limiter import MatchFields, MatchMethod, RequestState
+from ..log import logger
+from ..shared import config
+from ..structs.rate_limiter import MatchFields, MatchMethod, RequestState
 
 __all__ = (
     'add_rate_limit'
@@ -41,8 +41,7 @@ def _or(seq_1: Sequence[Any] | dict, seq_2: Sequence[Any] | dict) -> bool:
 
 def add_rate_limit(app: FastAPI):
     if not config.service.rate_limit.enable:
-        # raise RuntimeError('rate limit is not enabled')
-        return
+        raise RuntimeError('rate limit is not enabled')
 
     rate_limit_datas: list[RequestState] = []
     rate_limit_logger = logger.bind(name='rate_limiter')
@@ -76,20 +75,21 @@ def add_rate_limit(app: FastAPI):
             assert False, f'invalid match method `{_match_method}`'
 
         _last_request_count = 0
-        for _ in _last_requests:
+        for _ in _last_requests:  # filter 不能用 len
             _last_request_count += 1
-
-        if _last_request_count >= _limit:
-            rate_limit_logger.error(
-                'rate limit exceeded, return status: {}, detail: {} (for client `{}`)', _status_code, _message, _fields
-            )
-            raise HTTPException(status_code=_status_code, detail=_message)
 
         rate_limit_datas.append(
             RequestState(fields=_fields)  # type: ignore
         )
+
+        if _last_request_count > _limit:
+            rate_limit_logger.error(
+                'rate limit exceeded: requested {} times in {} is more than {} time limit,'
+                ' status: {}, detail: {} (for client `{}`)',
+                _last_request_count, _window_time, _limit, _status_code, _message, _fields
+            )
+            raise HTTPException(status_code=_status_code, detail=_message)
         return await call_next(request)
 
     app.middleware('http')(_rate_limit_middleware)
     rate_limit_logger.success('rate limiter enabled!')
-    return True
