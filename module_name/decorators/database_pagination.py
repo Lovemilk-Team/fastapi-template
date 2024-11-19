@@ -1,7 +1,7 @@
-from pydantic import BaseModel
-from asyncio import iscoroutine
 from sqlmodel import Session
 from sqlalchemy import Select
+from pydantic import BaseModel
+from asyncio import iscoroutine
 from fastapi.responses import Response
 from typing import Sequence, Callable, Any
 from inspect import signature, Parameter, Signature
