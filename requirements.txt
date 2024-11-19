@@ -3,3 +3,5 @@ uvicorn
 loguru
 pydantic
 pyyaml
+sqlalchemy  # 虽然 sqlmodel 会安装, 但是为了防止 PyCharm Warning 还是手动加上
+sqlmodel

@@ -9,9 +9,11 @@ __all__ = (
 
 class ServerException(Exception):
     def __init__(
-            self, code: int, message: str | None = None, data: Any = None, headers: Mapping[str, Any] | None = None
+            self, code: int, message: str | None = None, data: Any | None = None, errors: Any | None = None,
+            headers: Mapping[str, Any] | None = None
     ) -> None:
-        self._response = BaseResponse(code=code, message=message, data=data, headers=headers)
+        self._response = BaseResponse(code=code, message=message, data=data, errors=errors, headers=headers)
 
-    def to_response(self):
-        return self._response.to_response()
+    @property
+    def response(self):
+        return self._response

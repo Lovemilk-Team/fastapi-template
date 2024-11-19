@@ -91,7 +91,7 @@ class RateLimitConfig(BaseModel):
     )
 
     @model_validator(mode='after')
-    def verify_time_window(self):
+    def verify_fields(self):
         if not self.enable:
             return self
 
@@ -108,8 +108,28 @@ class RateLimitConfig(BaseModel):
         return self
 
 
+class DatabaseConfig(BaseModel):
+    class Config:
+        extra = 'allow'
+
+    enable: bool = Field(default=False, description='enable database')
+    url: str | None = Field(default=None, description='database url')
+    extras: dict = Field(  # like **kwargs
+        default_factory=dict, description='internal dict who receive the extra fields to SQLModel.create_engine'
+    )
+
+    @model_validator(mode='after')
+    def verify_fields(self):
+        if not self.enable:
+            return self
+
+        assert self.url is not None, 'url must be defined when enable is True'
+        return self
+
+
 class ServiceConfig(BaseModel):
     rate_limit: RateLimitConfig = RateLimitConfig()
+    database: DatabaseConfig = DatabaseConfig()
 
 
 class CORSConfig(BaseModel):
