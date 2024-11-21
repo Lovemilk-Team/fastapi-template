@@ -1,10 +1,10 @@
 from asyncio import iscoroutine
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
-from fastapi.exceptions import HTTPException, StarletteHTTPException, RequestValidationError
 from typing import Any, Callable, TypeVar, Coroutine, Awaitable, TypeAlias
+from fastapi.exceptions import HTTPException, StarletteHTTPException, RequestValidationError
 
-from ..structs.responses import BaseResponse
+from ..structs.responses import BaseResponse, ErrorResponse
 
 __all__ = (
     'add_http_exception_handler',
@@ -84,7 +84,7 @@ def add_server_exception_handler(app: FastAPI):
 
 def add_request_validation_exception_handler(app: FastAPI):
     def _handle_request_validation_exception(_: Request, exc: RequestValidationError):
-        return BaseResponse(code=422, errors=exc.errors())
+        return ErrorResponse(code=422, errors=exc.errors())
 
     app.exception_handler(RequestValidationError)(_handle_request_validation_exception)
 

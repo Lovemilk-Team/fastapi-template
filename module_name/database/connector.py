@@ -6,9 +6,7 @@ from functools import partial
 from sqlmodel import create_engine, SQLModel, Table, Session
 
 from ..shared import config
-from ..log import logger
-
-db_logger = logger.bind(name='database')
+from .shared import db_logger
 
 __all__ = (
     'connect2database',

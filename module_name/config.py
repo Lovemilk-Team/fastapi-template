@@ -34,6 +34,10 @@ class AppConfig(BaseModel):
     port: int | str = 8000
     reload: bool = False
     proxy_headers: bool = True
+    enable_test: bool = Field(
+        default=False,
+        description='enable test, if it was enabled, the routers in `<module-name>/tests/` will be included to app'
+    )
 
     title: str = 'Lovemilk FastAPI Template'
     summary: str | None = None

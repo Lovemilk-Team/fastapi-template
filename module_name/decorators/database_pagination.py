@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from asyncio import iscoroutine
 from fastapi.responses import Response
 from typing import Sequence, Callable, Any
+from fastapi.exceptions import HTTPException
 from inspect import signature, Parameter, Signature
 
 from ..database import dbsession_depend
@@ -41,6 +42,21 @@ def _merge_func_sign(func: Callable[..., Any], *functions: Callable[..., Any]):
     func.__signature__, func.__annotations__ = _get_merged_func_sign(*functions, func)
 
 
+class InvalidParamError(ValueError):
+    def __init__(self, msg: str, param: str):
+        super().__init__(msg)
+        self._msg = msg
+        self._param = param
+
+    @property
+    def msg(self) -> str:
+        return self._msg
+
+    @property
+    def param(self) -> str:
+        return self._param
+
+
 class BasePage(BaseModel):
     class Config:
         arbitrary_types_allowed = True
@@ -55,8 +71,23 @@ class LimitOffsetPage(BasePage):
     statement: Select
     limit: int | None = None
     offset: int | None = None
+    min_limit: int | None = 0
+    max_limit: int | None = None
 
     def apply_pagination(self) -> Select:
+        # check on runtime
+        if self.min_limit is not None and self.limit is not None and self.limit < self.min_limit:
+            raise InvalidParamError(
+                f'invalid limit, expect `limit >= {self.min_limit}`, but got `{self.limit}`',
+                param='limit'
+            )
+
+        if self.max_limit is not None and self.limit is not None and self.limit > self.max_limit:
+            raise InvalidParamError(
+                f'invalid limit, expect `limit <= {self.max_limit}`, but got `{self.limit}`',
+                param='limit'
+            )
+
         return self.statement.offset(self.offset).limit(self.limit)
 
 
@@ -66,7 +97,9 @@ def use_limit_pagination(
         response_generator: Callable[[Sequence[Any]], Response] = lambda data: BaseResponse(
             code=200, data=data
         ),
-        handle_select: bool = False
+        handle_select: bool = False,
+        invalid_code: int = 422,
+        invalid_message: str = 'invalid param `{param}`: {msg}'
 ):
     """
     use limit pagination (the pagination which based on limit and offset) for function return value
@@ -74,6 +107,8 @@ def use_limit_pagination(
     :param func: _wrapper will be called automatically if it's function
     :param response_generator: a function which accept one position argument (the result) and will return a FastAPI Response instance
     :param handle_select: handle return value if it is select statement object or not
+    :param invalid_code: the HTTP status code when an invalid parma provided
+    :param invalid_message: the error message when an invalid parma provided (use `{param}` and `{msg} to stands for the name of param and the error message)
 
     TIP:
     `@use_limit_pagination` (without call) is equivalent to `@use_limit_pagination()` when no arguments are provided
@@ -85,7 +120,7 @@ def use_limit_pagination(
                 offset: int | None = None,  # query
                 session: Session = dbsession_depend,
                 *args, **kwargs
-        ):
+        ) -> Response:
             response = _func(*args, **kwargs)
             if iscoroutine(response):
                 response = await response
@@ -98,7 +133,12 @@ def use_limit_pagination(
 
             response.limit = response.limit if response.limit is not None else limit
             response.offset = response.offset if response.offset is not None else offset
-            handled_statement = response.apply_pagination()
+            try:
+                handled_statement = response.apply_pagination()
+            except InvalidParamError as exc:
+                raise HTTPException(
+                    status_code=invalid_code, detail=invalid_message.format(param=exc.param, msg=exc.msg)
+                )
 
             return response_generator(session.exec(handled_statement).all())
 

@@ -1,3 +1,6 @@
+import sys
+from functools import partial
+from os import PathLike
 from pathlib import Path
 from importlib import import_module
 from fastapi import FastAPI, APIRouter, Request
@@ -11,6 +14,41 @@ from .cn_cdn_docs_ui import replace_swagger_ui
 from .fastapi_logger import replace_uvicorn_logger
 from .handles.exception_handles import add_http_exception_handler, add_server_exception_handler, \
     add_request_validation_exception_handler, add_exception_handler_middleware
+
+current_dir = Path(__file__).absolute().resolve().parent
+
+
+def _path2import_path(relative_path: Path) -> str:
+    _path = '.'.join(part if part != '..' else '.' for part in relative_path.parts)
+    return '.' + _path if not _path.startswith('..') else _path
+
+
+def _load_routers(target_dir: str | PathLike, target_router: APIRouter, *, ignore_py_special: bool = False):
+    target_dir = Path(target_dir)
+    relative_path = target_dir.relative_to(current_dir)
+    relative_import_path = _path2import_path(relative_path)
+
+    for _file in target_dir.iterdir():  # 仅遍历顶层
+        if not _file.is_file():
+            continue
+
+        if not _file.suffix.lower().endswith('.py'):
+            continue
+
+        if ignore_py_special and _file.stem.startswith('__') and _file.stem.endswith('__'):
+            continue
+
+        _module_name = f'{relative_import_path}.{_file.stem}'
+        _module = import_module(_module_name, current_dir.name)
+        _router = getattr(_module, ROUTER_KEYNAME, None)
+        if not isinstance(_router, APIRouter):
+            del _module, _module_name, _router
+            continue
+
+        target_router.include_router(_router)
+        logger.success('router `{}:{}` added', _module_name, ROUTER_KEYNAME)
+        del _module, _module_name, _router
+
 
 ROUTER_KEYNAME = 'router'
 ROUTER_ROOT_PATH = ''  # root
@@ -31,26 +69,13 @@ add_request_validation_exception_handler(app)
 add_exception_handler_middleware(app)
 root_router = APIRouter(prefix=ROUTER_ROOT_PATH)
 
-_current_dir = Path(__file__).absolute().resolve().parent
-for _file in (_current_dir / 'routers').iterdir():  # 仅遍历顶层
-    if not _file.is_file():
-        continue
-
-    if not _file.suffix.lower().endswith('.py'):
-        continue
-
-    _module_name = f'.routers.{_file.stem}'
-    _module = import_module(_module_name, _current_dir.name)
-    _router = getattr(_module, ROUTER_KEYNAME, None)
-    if not isinstance(_router, APIRouter):
-        del _module, _module_name, _router
-        continue
-
-    root_router.include_router(_router)
-    logger.success('router `{}:{}` added!', _module_name, ROUTER_KEYNAME)
-    del _module, _module_name, _router
-del _current_dir
-
+logger.info('start to load routers...')
+_load_routers(current_dir / 'routers/', root_router)
+logger.success('routers are loaded')
+if config.app.enable_test:
+    logger.debug('test is enabled, loading test routers...')
+    _load_routers(current_dir / 'tests/', root_router)
+    logger.debug('test routers are loaded')
 app.include_router(root_router)
 
 
