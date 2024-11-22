@@ -23,8 +23,8 @@ jobs:
 
       - name: Commit and push hash file
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "lovemilk2333"
+          git config --global user.email "${{ secrets.LOVEMILK2333_EMAIL }}"
           git add -f module_name/commit_hash.py  # 忽略 .gitignore 中的规则强制添加
           git commit -m "[Action] auto update commit hash file"
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main
