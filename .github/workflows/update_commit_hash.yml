@@ -1,0 +1,23 @@
+name: Update Commit Hash
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-version-file:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v2
+
+      - name: Get the latest commit hash
+        id: get_commit_hash
+        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Create hash file
+        run: |
+          mkdir -p module_name  # 如果 module_name 目录不存在，先创建
+          echo -e "VERSION = \"${{ env.COMMIT_HASH }}\"\n" > module_name/commit_hash.py
