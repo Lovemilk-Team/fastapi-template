@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+  # 允许从 Actions 选项卡手动运行
+  workflow_dispatch:
+
 jobs:
   create-version-file:
     runs-on: ubuntu-latest
