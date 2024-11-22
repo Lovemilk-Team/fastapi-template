@@ -25,7 +25,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add module_name/commit_hash.py
+          git add -f module_name/commit_hash.py  # 忽略 .gitignore 中的规则强制添加
           git commit -m "[Action] auto update commit hash file"
           git push
         env:
