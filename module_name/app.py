@@ -77,7 +77,9 @@ if config.app.enable_test:
 app.include_router(root_router)
 
 from .commit_hash import COMMIT_HASH
+
 logger.success('app startup completed, current commit hash: {}', COMMIT_HASH)
+
 
 @app.get('/')
 async def index():

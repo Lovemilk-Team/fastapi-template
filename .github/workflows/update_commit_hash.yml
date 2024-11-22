@@ -22,7 +22,7 @@ jobs:
 
       - name: Create hash file
         run: |
-          echo -e "COMMIT_HASH = \"${{ env.COMMIT_HASH }}\"\n" > module_name/commit_hash.py
+          echo "COMMIT_HASH = \"${{ env.COMMIT_HASH }}\"" > module_name/commit_hash.py
 
       - name: Commit and push hash file
         run: |
