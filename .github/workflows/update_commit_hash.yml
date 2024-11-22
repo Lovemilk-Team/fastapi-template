@@ -19,5 +19,14 @@ jobs:
 
       - name: Create hash file
         run: |
-          mkdir -p module_name  # 如果 module_name 目录不存在，先创建
           echo -e "VERSION = \"${{ env.COMMIT_HASH }}\"\n" > module_name/commit_hash.py
+
+      - name: Commit and push hash file
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add module_name/commit_hash.py
+          git commit -m "[Action] auto update commit hash file"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
