@@ -10,10 +10,10 @@ import yaml
 from .structs.rate_limiter import MatchFields, MatchMethod
 
 try:
-    # 优先使用 LibYAML 速度更快
+    # LibYAML is much faster
     from yaml import Cloader as Loader, CDumper as Dumper
 except ImportError:
-    # 回退到 Python 的普通实现
+    # fallback: default implement based on Python
     from yaml import Loader, Dumper
 
 APP_VERSION = '0.1.0'
@@ -192,12 +192,14 @@ def _map_files(
     return result
 
 
-def create_config(config: Config, *, path: str | Path = MERGED_CONFIG_PATH):
+def create_config(config: Config, *, path: str | Path = MERGED_CONFIG_PATH, force_write: bool = True):
     """
-    配置文件不存在时生成一个完整的默认配置
+    generate a complete merged configuration file
+    NOTE:
+    you can cp, edit and rename it to make your own config
     """
     path = Path(path)
-    if path.exists():
+    if not force_write and path.exists():
         return
 
     try:

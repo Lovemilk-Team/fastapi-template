@@ -1,9 +1,11 @@
+from functools import partial
 from asyncio import iscoroutine
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from typing import Any, Callable, TypeVar, Coroutine, Awaitable, TypeAlias
 from fastapi.exceptions import HTTPException, StarletteHTTPException, RequestValidationError
 
+from ..log import logger
 from ..structs.responses import BaseResponse, ErrorResponse
 
 __all__ = (
@@ -27,9 +29,13 @@ def _get_handlers(exc: _ExceptionType) -> list[_ExceptionHandlerType] | None:
     return _exception_handlers[exc]
 
 
-async def _exception_handler_middleware(request: Request, call_next):
+async def _exception_handler_middleware(handle_all: bool, request: Request, call_next):
+    errored = True
+
     try:
-        return await call_next(request)
+        resp = await call_next(request)
+        errored = False
+        return resp
     except tuple(_exception_handlers.keys()) as exc:  # 相对引入和绝对引入的 Exception 不相等, 请注意!
         handlers = _get_handlers(type(exc))
         if not handlers:
@@ -41,9 +47,17 @@ async def _exception_handler_middleware(request: Request, call_next):
                 result = await result
 
             if isinstance(result, (Response, BaseResponse)):
+                errored = False
                 return result
 
+        logger.exception(exc)
         raise
+    except Exception as exc:
+        logger.exception(exc)
+        raise
+    finally:
+        if handle_all and errored:
+            return BaseResponse(code=500)
 
 
 def _add_handler(exc: _ExceptionType, handler: _ExceptionHandlerType):
@@ -55,7 +69,7 @@ def _add_handler(exc: _ExceptionType, handler: _ExceptionHandlerType):
 
 # 由于 app.exception_handler 无法捕获位于 middleware 的 exception, 此处使用 middleware 实现
 def add_http_exception_handler(app: FastAPI):
-    async def _handle_http_exception(_: Request, exc: StarletteHTTPException):
+    async def _handle_http_exception(_: Request, exc: StarletteHTTPException) -> BaseResponse:
         return BaseResponse(code=exc.status_code, message=exc.detail, headers=exc.headers)
 
     _add_handler(HTTPException, _handle_http_exception)  # type: ignore
@@ -75,7 +89,7 @@ def add_server_exception_handler(app: FastAPI):
     """
     from ..structs.exceptions import ServerException
 
-    async def _handle_server_exception(_: Request, exc: ServerException):
+    async def _handle_server_exception(_: Request, exc: ServerException) -> BaseResponse:
         return exc.response
 
     _add_handler(StarletteHTTPException, _handle_server_exception)  # type: ignore
@@ -83,11 +97,17 @@ def add_server_exception_handler(app: FastAPI):
 
 
 def add_request_validation_exception_handler(app: FastAPI):
-    def _handle_request_validation_exception(_: Request, exc: RequestValidationError):
+    def _handle_request_validation_exception(_: Request, exc: RequestValidationError) -> ErrorResponse:
         return ErrorResponse(code=422, errors=exc.errors())
 
     app.exception_handler(RequestValidationError)(_handle_request_validation_exception)
 
 
-def add_exception_handler_middleware(app: FastAPI):
-    app.middleware('http')(_exception_handler_middleware)
+def add_exception_handler_middleware(app: FastAPI, handle_all: bool = True):
+    """
+    add the middleware which can handle exceptions happened if you added it
+
+    :param app: the FastAPI instance
+    :param handle_all: if return a response with status code 500 even the exception happened you haven't added
+    """
+    app.middleware('http')(partial(_exception_handler_middleware, handle_all))

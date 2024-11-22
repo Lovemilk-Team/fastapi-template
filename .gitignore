@@ -673,6 +673,8 @@ cython_debug/
 *.sql
 __pycache__
 
+/module_name/commit_hash.py
+
 /*config.*
 /logs
 /frontend

@@ -80,7 +80,7 @@ def connect2database(tables: Sequence[Table] | None = None, checkfirst: bool = T
 
 def get_dbsession(engine: Engine) -> Session:
     with Session(engine) as session:
-        return session
+        yield session
 
 
 def get_dbsession_depend(engine: Engine) -> Annotated[Callable[[], Session], DependsParam]:

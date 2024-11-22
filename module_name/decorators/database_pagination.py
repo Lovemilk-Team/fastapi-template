@@ -13,12 +13,15 @@ from ..structs.responses import BaseResponse
 __all__ = (
     'BasePage',
     'LimitOffsetPage',
+    'InvalidParamError',
     'use_limit_pagination'
 )
 
 
 def _get_merged_func_sign(
+        func: Callable[..., Any],
         *functions: Callable[..., Any],
+        return_annotation: Any = ...,
         skip_VAR_POSITIONAL: bool = True,
         skip_VAR_KEYWORD: bool = True,
 ) -> tuple[Signature, dict[str, Any]]:
@@ -27,7 +30,8 @@ def _get_merged_func_sign(
 
     params = []
     annotations = {}
-    for sign in map(signature, functions):
+    func_sign = signature(func)
+    for sign in (*map(signature, functions), func_sign):
         for param in sign.parameters.values():
             if skip_VAR_POSITIONAL and _is_VAR_POSITIONAL(param) or skip_VAR_KEYWORD and _is_VAR_KEYWORD(param):
                 continue
@@ -35,11 +39,19 @@ def _get_merged_func_sign(
             params.append(param)
             annotations[param.name] = param.annotation
 
-    return Signature(params), annotations
+    return Signature(params, return_annotation=return_annotation), annotations
 
 
-def _merge_func_sign(func: Callable[..., Any], *functions: Callable[..., Any]):
-    func.__signature__, func.__annotations__ = _get_merged_func_sign(*functions, func)
+def _merge_func_sign(func: Callable[..., Any], *functions: Callable[..., Any], return_annotation: Any=...):
+    """
+    merge the arguments of `func` and `functions` exclude `*argv` or `**kwargs`
+
+    NOTE:
+    the signature and annotations of `func` will be updated
+    """
+    func.__signature__, func.__annotations__ = _get_merged_func_sign(
+        func, *functions, return_annotation=return_annotation
+    )
 
 
 class InvalidParamError(ValueError):
@@ -47,6 +59,9 @@ class InvalidParamError(ValueError):
         super().__init__(msg)
         self._msg = msg
         self._param = param
+
+    def __repr__(self):
+        return f'{type(self).__name__}({self._msg!r}, {self._param!r})'
 
     @property
     def msg(self) -> str:
@@ -61,14 +76,14 @@ class BasePage(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    statement: Sequence | Select
+    data: Sequence | Select
 
     def apply_pagination(self) -> Sequence | Select:
         raise NotImplementedError
 
 
 class LimitOffsetPage(BasePage):
-    statement: Select
+    data: Select
     limit: int | None = None
     offset: int | None = None
     min_limit: int | None = 0
@@ -76,19 +91,19 @@ class LimitOffsetPage(BasePage):
 
     def apply_pagination(self) -> Select:
         # check on runtime
-        if self.min_limit is not None and self.limit is not None and self.limit < self.min_limit:
+        if self.limit is not None and self.min_limit is not None and self.limit < self.min_limit:
             raise InvalidParamError(
                 f'invalid limit, expect `limit >= {self.min_limit}`, but got `{self.limit}`',
                 param='limit'
             )
 
-        if self.max_limit is not None and self.limit is not None and self.limit > self.max_limit:
+        if self.limit is not None and self.max_limit is not None and self.limit > self.max_limit:
             raise InvalidParamError(
                 f'invalid limit, expect `limit <= {self.max_limit}`, but got `{self.limit}`',
                 param='limit'
             )
 
-        return self.statement.offset(self.offset).limit(self.limit)
+        return self.data.offset(self.offset).limit(self.limit)
 
 
 def use_limit_pagination(
@@ -97,6 +112,7 @@ def use_limit_pagination(
         response_generator: Callable[[Sequence[Any]], Response] = lambda data: BaseResponse(
             code=200, data=data
         ),
+        return_annotation: Any | None = None,
         handle_select: bool = False,
         invalid_code: int = 422,
         invalid_message: str = 'invalid param `{param}`: {msg}'
@@ -104,11 +120,12 @@ def use_limit_pagination(
     """
     use limit pagination (the pagination which based on limit and offset) for function return value
 
-    :param func: _wrapper will be called automatically if it's function
+    :param func: _wrapper will be called automatically if it's a function
     :param response_generator: a function which accept one position argument (the result) and will return a FastAPI Response instance
+    :param return_annotation: the type hint of return values (`None` to use the return type of `func`)
     :param handle_select: handle return value if it is select statement object or not
     :param invalid_code: the HTTP status code when an invalid parma provided
-    :param invalid_message: the error message when an invalid parma provided (use `{param}` and `{msg} to stands for the name of param and the error message)
+    :param invalid_message: the message when an invalid parma provided (use `{param}` and `{msg}` stand for the name of param and the message of error)
 
     TIP:
     `@use_limit_pagination` (without call) is equivalent to `@use_limit_pagination()` when no arguments are provided
@@ -126,7 +143,7 @@ def use_limit_pagination(
                 response = await response
 
             if handle_select and isinstance(response, Select):
-                response = LimitOffsetPage(statement=response)  # convert to LimitOffsetPage
+                response = LimitOffsetPage(data=response)  # convert to LimitOffsetPage
 
             if not isinstance(response, LimitOffsetPage):
                 return response
@@ -143,7 +160,13 @@ def use_limit_pagination(
             return response_generator(session.exec(handled_statement).all())
 
         # 将形参(名称及其类型)和函数签名合并, 并忽略 `*args` 和 `**kwargs`
-        _merge_func_sign(_pagination_handler, _func)
+        _merge_func_sign(
+            _pagination_handler,
+            _func,
+            return_annotation=return_annotation if return_annotation is not None else signature(_func).return_annotation
+        )
+        # 使 Docs UI 的名称显示为上级函数名称, 而非始终显示 `Pagination Handler`
+        _pagination_handler.__name__ = _func.__name__
         return _pagination_handler
 
     return _wrapper(func) if isinstance(func, Callable) else _wrapper

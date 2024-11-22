@@ -1,9 +1,7 @@
-import sys
-from functools import partial
 from os import PathLike
 from pathlib import Path
 from importlib import import_module
-from fastapi import FastAPI, APIRouter, Request
+from fastapi import FastAPI, APIRouter
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -78,6 +76,8 @@ if config.app.enable_test:
     logger.debug('test routers are loaded')
 app.include_router(root_router)
 
+from .commit_hash import COMMIT_HASH
+logger.success('app startup completed, current commit hash: {}', COMMIT_HASH)
 
 @app.get('/')
 async def index():
