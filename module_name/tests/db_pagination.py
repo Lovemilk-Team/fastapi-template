@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request
 from sqlmodel import select, Session, SQLModel, Field
 
 
+# 在导入 database 前定义以保证 Model 被加到 metadata
 class TestModel(SQLModel, table=True):
     __tablename__ = 'test'
     id: int | None = Field(default=None, primary_key=True)

@@ -42,16 +42,17 @@ def _get_merged_func_sign(
     return Signature(params, return_annotation=return_annotation), annotations
 
 
-def _merge_func_sign(func: Callable[..., Any], *functions: Callable[..., Any], return_annotation: Any=...):
+def _merge_func_sign(func: Callable[..., Any], origin_func: Callable[..., Any], return_annotation: Any = ...):
     """
-    merge the arguments of `func` and `functions` exclude `*argv` or `**kwargs`
+    merge the arguments of `func` and `origin_func` exclude `*argv` or `**kwargs`
+    and set `func`'s name to `origin_func`'s name
 
     NOTE:
     the signature and annotations of `func` will be updated
     """
-    func.__signature__, func.__annotations__ = _get_merged_func_sign(
-        func, *functions, return_annotation=return_annotation
-    )
+    func.__signature__, func.__annotations__ = \
+        _get_merged_func_sign(func, origin_func, return_annotation=return_annotation)
+    func.__name__ = origin_func.__name__
 
 
 class InvalidParamError(ValueError):
@@ -160,13 +161,13 @@ def use_limit_pagination(
             return response_generator(session.exec(handled_statement).all())
 
         # 将形参(名称及其类型)和函数签名合并, 并忽略 `*args` 和 `**kwargs`
+        # 并使 Docs UI 的名称显示为上级函数名称, 而非始终显示 `Pagination Handler`
         _merge_func_sign(
             _pagination_handler,
             _func,
             return_annotation=return_annotation if return_annotation is not None else signature(_func).return_annotation
         )
-        # 使 Docs UI 的名称显示为上级函数名称, 而非始终显示 `Pagination Handler`
-        _pagination_handler.__name__ = _func.__name__
+
         return _pagination_handler
 
     return _wrapper(func) if isinstance(func, Callable) else _wrapper

@@ -1,11 +1,11 @@
-from http import HTTPStatus
+import yaml
 from pathlib import Path
-from fastapi.openapi.models import License as AppLicense, Contact as AppContact
-from typing import Callable, Any, TypeVar, Iterable
-from pydantic import BaseModel, model_validator, Field
+from http import HTTPStatus
 from functools import cached_property
 from datetime import time, timedelta
-import yaml
+from typing import Callable, Any, TypeVar, Iterable
+from pydantic import BaseModel, model_validator, Field
+from fastapi.openapi.models import License as AppLicense, Contact as AppContact
 
 from .structs.rate_limiter import MatchFields, MatchMethod
 
@@ -34,9 +34,9 @@ class AppConfig(BaseModel):
     port: int | str = 8000
     reload: bool = False
     proxy_headers: bool = True
-    enable_test: bool = Field(
+    test_mode: bool = Field(
         default=False,
-        description='enable test, if it was enabled, the routers in `<module-name>/tests/` will be included to app'
+        description='use test mode, if it was True, the routers in `<module-name>/tests/` will be included to app'
     )
 
     title: str = 'Lovemilk FastAPI Template'
@@ -99,12 +99,13 @@ class RateLimitConfig(BaseModel):
         if not self.enable:
             return self
 
-        assert self.window_time is not None, 'window_time must be defined when enable is True'
-        assert self.limit is not None, 'limit must be defined when enable is True'
-        assert self.match_fields is not None, 'match_fields must be defined when enable is True'
+        ATTR_NAMES = ('window_time', 'limit', 'match_fields', 'match_method')
+        for _attr in ATTR_NAMES:
+            _attr_value = getattr(self, _attr)
+            assert _attr_value is not None, f'`{_attr}` must be defined when enable is True'
+
         if not isinstance(self.match_fields, list):
             self.match_fields = [self.match_fields]
-        assert self.match_method is not None, 'match_method must be defined when enable is True'
 
         if self.message is None:
             self.message = HTTPStatus(self.status_code).phrase
@@ -127,7 +128,10 @@ class DatabaseConfig(BaseModel):
         if not self.enable:
             return self
 
-        assert self.url is not None, 'url must be defined when enable is True'
+        ATTR_NAMES = ('url', )
+        for _attr in ATTR_NAMES:
+            _attr_value = getattr(self, _attr)
+            assert _attr_value is not None, f'`{_attr_value}` must be defined when enable is True'
         return self
 
 
@@ -215,11 +219,13 @@ def create_config(config: Config, *, path: str | Path = MERGED_CONFIG_PATH, forc
 
 
 def load_config() -> Config:
+    from os import getenv
     _format_key: Callable[[str], str] = lambda key: key.strip().lower().replace('-', '_')
 
+    _is_dev = getenv('MILK_DEVMODE', '').strip() == '1'
     config_dict: dict = {}
     for config in _map_files(
-            ('config', 'prod.config', 'dev.config'),
+            ('config', 'prod.config') + ('dev.config',) if _is_dev else (),
             ('.json', '.yaml', '.yml'),
             _load_yaml
     ):
@@ -227,5 +233,6 @@ def load_config() -> Config:
         config_dict.update({_format_key(k): v for k, v in config.items()})
 
     config = Config(**config_dict)
-    create_config(config)
+    if not _is_dev:
+        create_config(config)
     return config

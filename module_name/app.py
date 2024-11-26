@@ -17,14 +17,18 @@ current_dir = Path(__file__).absolute().resolve().parent
 
 
 def _path2import_path(relative_path: Path) -> str:
+    """
+    convert relative path to Python relative import path format
+
+    TIP:
+    filename or directory name which includes `.` is not supported because of Python import path format
+    """
     _path = '.'.join(part if part != '..' else '.' for part in relative_path.parts)
     return '.' + _path if not _path.startswith('..') else _path
 
 
 def _load_routers(target_dir: str | PathLike, target_router: APIRouter, *, ignore_py_special: bool = False):
     target_dir = Path(target_dir)
-    relative_path = target_dir.relative_to(current_dir)
-    relative_import_path = _path2import_path(relative_path)
 
     for _file in target_dir.iterdir():  # 仅遍历顶层
         if not _file.is_file():
@@ -36,7 +40,15 @@ def _load_routers(target_dir: str | PathLike, target_router: APIRouter, *, ignor
         if ignore_py_special and _file.stem.startswith('__') and _file.stem.endswith('__'):
             continue
 
-        _module_name = f'{relative_import_path}.{_file.stem}'
+        if '.' in _file.stem:
+            logger.warning(
+                'invalid py file name `{}` because `.` is in the file stem, skip to import',
+                _file.name
+            )
+            continue
+
+        # use `Path.with_suffix('')` to remove suffix
+        _module_name = _path2import_path(_file.with_suffix('').relative_to(current_dir))
         _module = import_module(_module_name, current_dir.name)
         _router = getattr(_module, ROUTER_KEYNAME, None)
         if not isinstance(_router, APIRouter):
@@ -70,15 +82,15 @@ root_router = APIRouter(prefix=ROUTER_ROOT_PATH)
 logger.info('start to load routers...')
 _load_routers(current_dir / 'routers/', root_router)
 logger.success('routers are loaded')
-if config.app.enable_test:
-    logger.debug('test is enabled, loading test routers...')
+if config.app.test_mode:
+    logger.debug('test mode is enabled, loading test routers...')
     _load_routers(current_dir / 'tests/', root_router)
     logger.debug('test routers are loaded')
 app.include_router(root_router)
 
 from .commit_hash import COMMIT_HASH
 
-logger.success('app startup completed, current commit hash: {}', COMMIT_HASH)
+logger.success('app startup completed, current commit hash `{}`', COMMIT_HASH)
 
 
 @app.get('/')
